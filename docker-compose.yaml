@@ -1,31 +1,58 @@
 services:
-  woodpecker-server:
-    image: woodpeckerci/woodpecker-server:v3
+  db:
+    image: mysql:8
+    #volumes:
+    #  - db:db
+    env_file:
+      - .env.local
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+    networks:
+      - internal
+
+  api:
+    build: services/api/.
     ports:
-      - 8000:8000
-    volumes:
-      - woodpecker-server-data:/var/lib/woodpecker/
+      - "8080:8080"
     environment:
-      - WOODPECKER_OPEN=true
-      - WOODPECKER_HOST=${WOODPECKER_HOST}
-      - WOODPECKER_GITHUB=true
-      - WOODPECKER_GITHUB_CLIENT=${WOODPECKER_GITHUB_CLIENT}
-      - WOODPECKER_GITHUB_SECRET=${WOODPECKER_GITHUB_SECRET}
-      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
+      - GIN_MODE=release
+    restart: unless-stopped
+    networks:
+      - internal
 
-  woodpecker-agent:
-    image: woodpeckerci/woodpecker-agent:v3
-    command: agent
-    restart: always
-    depends_on:
-      - woodpecker-server
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - 9090:9090
+    restart: unless-stopped
     volumes:
-      - woodpecker-agent-config:/etc/woodpecker
-      - /var/run/docker.sock:/var/run/docker.sock
+      - "./services/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml"
+      - prom_data:/prometheus
+  node-exporter:
+    image: prom/node-exporter
+    networks:
+      - localprom
+    ports:
+      - 9100:9100
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    restart: unless-stopped
     environment:
-      - WOODPECKER_SERVER=woodpecker-server:9000
-      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
-
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+    volumes:
+      - ./grafana:/etc/grafana/provisioning/datasources
+  
 volumes:
-  woodpecker-server-data:
-  woodpecker-agent-config:
+  prom_data:
+
+
+networks:
+  internal:
+    driver: bridge
